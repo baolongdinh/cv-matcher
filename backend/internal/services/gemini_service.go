@@ -85,9 +85,11 @@ For each dimension, the "evidence" field MUST start with a **Reasoning of Score*
 ### **TARGET JSON STRUCTURE**
 {
   "executive_summary": "...",
+  "seniority_verdict": "...",
+  "onboarding_estimate": "...",
   "matching_score": {
     "overall": 0.0,
-    "skills_alignment": {"score": 0.0, "evidence": ["Reasoning: ...", "Detail 1...", "Detail 2..."], "gaps_identified": [], "confidence_level": 1.0},
+    "skills_alignment": {"score": 0.0, "evidence": ["Reasoning: ...", "Detail 1...", "Detail 2..."], "gaps_identified": ["Gap String 1", "Gap String 2"], "confidence_level": 1.0},
     "experience_relevance": {"score": 0.0, "evidence": [], "gaps_identified": [], "confidence_level": 1.0},
     "seniority_fit": {"score": 0.0, "evidence": [], "gaps_identified": [], "confidence_level": 1.0},
     "domain_knowledge": {"score": 0.0, "evidence": [], "gaps_identified": [], "confidence_level": 1.0},
