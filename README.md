@@ -1,6 +1,7 @@
 # CV-JD Matcher Tool
 
 A professional internal tool for recruiters to analyze CVs against Job Descriptions using Google Gemini AI.
+<img width="3126" height="3818" alt="10 0 0 125_5173_" src="https://github.com/user-attachments/assets/d1359288-9e0b-4e6d-acaa-11a0954f1eb2" />
 
 ## Features
 - **AI-Powered Matching**: Detailed scoring across 6 dimensions.
