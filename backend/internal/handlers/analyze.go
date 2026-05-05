@@ -33,6 +33,7 @@ func (h *AnalyzeHandler) Analyze(c *gin.Context) {
 	apiKey := c.PostForm("api_key")
 	file, err := c.FormFile("cv_file")
 	sessionID := c.GetHeader("X-Session-ID")
+	fileHash := c.GetHeader("X-File-Hash")
 
 	if jobDescription == "" || file == nil {
 		c.JSON(http.StatusBadRequest, gin.H{
@@ -43,6 +44,18 @@ func (h *AnalyzeHandler) Analyze(c *gin.Context) {
 			},
 		})
 		return
+	}
+
+	// 1.5 Check cache if session and hash are provided
+	if sessionID != "" && fileHash != "" {
+		cachedResult, err := h.historyService.GetByHash(c.Request.Context(), sessionID, fileHash)
+		if err == nil && cachedResult != nil {
+			c.JSON(http.StatusOK, gin.H{
+				"status": "success",
+				"data":   cachedResult,
+			})
+			return
+		}
 	}
 
 	// 2. Read CV file
@@ -118,14 +131,16 @@ func (h *AnalyzeHandler) Analyze(c *gin.Context) {
 	}
 
 	// 6. Add metadata
+	result.FileHash = fileHash
 	result.ProcessingMetadata = models.ProcessingMetadata{
 		ProcessingTime:   time.Since(startTime).Seconds(),
 		CVPagesProcessed: numPages,
 		JDWordCount:      len(jobDescription), // Simple word count
-		ModelUsed:        "gemini-2.5-flash-lite",
+		ModelUsed:        "gemini-1.5-flash",
 		Timestamp:        time.Now().Format(time.RFC3339),
 		RequestID:        fmt.Sprintf("req_%d", time.Now().UnixNano()),
 		CVFileName:       file.Filename,
+		FileHash:         fileHash,
 	}
 
 	// 7. Save to Redis History asynchronously if Session ID is present
@@ -135,7 +150,6 @@ func (h *AnalyzeHandler) Analyze(c *gin.Context) {
 		}(sessionID, result)
 	}
 
-	c.Header("Access-Control-Allow-Origin", "*")
 	c.JSON(http.StatusOK, gin.H{
 		"status": "success",
 		"data":   result,

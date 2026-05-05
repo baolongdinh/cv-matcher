@@ -10,7 +10,10 @@ export interface HistoryResponse {
   }
 }
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api'
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ||
+  (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+    ? 'http://localhost:8000/api'
+    : `http://${window.location.hostname}:8000/api`)
 
 let sessionId = localStorage.getItem('cv_matcher_session_id')
 if (!sessionId) {
@@ -25,11 +28,38 @@ const api = axios.create({
   }
 })
 
+const getFileHash = async (file: File): Promise<string> => {
+  try {
+    const buffer = await file.arrayBuffer()
+
+    // Check if crypto.subtle is available (only in Secure Contexts: HTTPS or localhost)
+    if (window.crypto && window.crypto.subtle) {
+      const hashBuffer = await crypto.subtle.digest('SHA-256', buffer)
+      const hashArray = Array.from(new Uint8Array(hashBuffer))
+      return hashArray.map(b => b.toString(16).padStart(2, '0')).join('')
+    }
+
+    // Fallback for non-secure contexts (e.g., accessing via network IP without HTTPS)
+    console.warn('[API] crypto.subtle not available. Using fallback hash.')
+    let hash = 0
+    const view = new Uint8Array(buffer)
+    for (let i = 0; i < view.length; i++) {
+      hash = ((hash << 5) - hash) + view[i]
+      hash |= 0 // Convert to 32bit integer
+    }
+    return `fallback-${file.name}-${file.size}-${hash}`
+  } catch (e) {
+    console.error('[API] Error generating file hash:', e)
+    return `error-${file.name}-${file.size}-${Date.now()}`
+  }
+}
+
 export const analyzeCV = async (
   jd: string,
   cvFile: File,
   apiKey: string
 ): Promise<AnalysisResponse> => {
+  const fileHash = await getFileHash(cvFile)
   const formData = new FormData()
   formData.append('job_description', jd)
   formData.append('cv_file', cvFile)
@@ -38,6 +68,7 @@ export const analyzeCV = async (
   const response = await api.post<AnalysisResponse>('/analyze', formData, {
     headers: {
       'Content-Type': 'multipart/form-data',
+      'X-File-Hash': fileHash
     },
   })
 

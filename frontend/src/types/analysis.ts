@@ -69,6 +69,7 @@ export interface SkillScore {
 
 export interface AnalysisResult {
   executive_summary: string
+  file_hash: string
   matching_score: MatchingScore
   quality_score: QualityScore
   technical_skills: SkillScore[]

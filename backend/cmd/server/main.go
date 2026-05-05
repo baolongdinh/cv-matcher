@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 
 	"cv-jd-matcher/internal/handlers"
 	"cv-jd-matcher/internal/services"
@@ -54,11 +55,12 @@ func main() {
 	config := cors.DefaultConfig()
 	corsOrigins := os.Getenv("CORS_ORIGINS")
 	if corsOrigins == "" {
-		corsOrigins = "http://localhost:8000"
+		config.AllowAllOrigins = true
+	} else {
+		config.AllowOrigins = strings.Split(corsOrigins, ",")
 	}
-	config.AllowOrigins = []string{corsOrigins}
 	config.AllowMethods = []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"}
-	config.AllowHeaders = []string{"Origin", "Content-Type", "Accept", "Authorization", "X-Session-ID"}
+	config.AllowHeaders = []string{"Origin", "Content-Type", "Accept", "Authorization", "X-Session-ID", "X-File-Hash"}
 	r.Use(cors.New(config))
 
 	// API routes group

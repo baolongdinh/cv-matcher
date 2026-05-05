@@ -3,9 +3,18 @@
     <!-- Analysis Summary Header -->
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
       <div class="lg:col-span-2 bg-white p-8 rounded-3xl border border-navy-100 shadow-[0_8px_30px_rgb(0,0,0,0.04)]">
-        <div class="flex items-center space-x-3 mb-6">
-          <span class="px-3 py-1 rounded-full bg-emerald-100 text-emerald-700 text-[10px] font-black uppercase tracking-[0.2em]">Analysis Complete</span>
-          <span class="text-[10px] font-bold text-navy-300 uppercase tracking-widest">ID: {{ result.processing_metadata.request_id }}</span>
+        <div class="flex items-center justify-between mb-6">
+          <div class="flex items-center space-x-3">
+            <span class="px-3 py-1 rounded-full bg-emerald-100 text-emerald-700 text-[10px] font-black uppercase tracking-[0.2em]">Analysis Complete</span>
+            <span class="text-[10px] font-bold text-navy-300 uppercase tracking-widest">ID: {{ result.processing_metadata.request_id }}</span>
+          </div>
+          <button 
+            @click="handleDownloadPDF"
+            class="flex items-center space-x-2 px-4 py-2 bg-navy-900 hover:bg-navy-800 text-white text-[11px] font-black uppercase tracking-widest rounded-xl transition-all hover:scale-105 active:scale-95 shadow-lg shadow-navy-900/10"
+          >
+            <DownloadIcon class="w-3.5 h-3.5" />
+            <span>Download PDF</span>
+          </button>
         </div>
         
         <h2 class="text-4xl font-black text-navy-900 mb-2 tracking-tight">Overall Matching Score: {{ result.matching_score.overall }}/10</h2>
@@ -167,14 +176,20 @@ import {
   AlertTriangle as AlertTriangleIcon,
   AlertCircle as AlertCircleIcon,
   ShieldCheck as ShieldCheckIcon,
-  Layout as LayoutIcon
+  Layout as LayoutIcon,
+  Download as DownloadIcon
 } from 'lucide-vue-next'
 import type { AnalysisResult } from '../types/analysis'
 import RadarChart from './RadarChart.vue'
+import { generateAnalysisPDF } from '../utils/pdfGenerator'
 
 const props = defineProps<{
   result: AnalysisResult
 }>()
+
+const handleDownloadPDF = () => {
+  generateAnalysisPDF(props.result, props.result.processing_metadata.cv_file_name || 'cv_analysis.pdf')
+}
 
 const getScoreColor = (score: number) => {
   if (score >= 8) return 'bg-emerald-500 shadow-emerald-500/20'

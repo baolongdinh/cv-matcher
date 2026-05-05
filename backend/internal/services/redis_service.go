@@ -31,11 +31,44 @@ func (s *HistoryService) SaveAnalysis(ctx context.Context, sessionID string, res
 		return err
 	}
 
+	// Save to history hash
 	err = s.client.HSet(ctx, key, result.ProcessingMetadata.RequestID, data).Err()
 	if err != nil {
 		return err
 	}
+
+	// Save semantic cache mapping if hash exists
+	if result.FileHash != "" {
+		cacheKey := fmt.Sprintf("cv_matcher:session_cache:%s:%s", sessionID, result.FileHash)
+		s.client.Set(ctx, cacheKey, result.ProcessingMetadata.RequestID, 0)
+	}
+
 	return nil
+}
+
+func (s *HistoryService) GetByHash(ctx context.Context, sessionID string, hash string) (*models.AnalysisResult, error) {
+	if hash == "" {
+		return nil, fmt.Errorf("empty hash")
+	}
+
+	cacheKey := fmt.Sprintf("cv_matcher:session_cache:%s:%s", sessionID, hash)
+	requestID, err := s.client.Get(ctx, cacheKey).Result()
+	if err != nil {
+		return nil, err
+	}
+
+	key := getHistoryKey(sessionID)
+	data, err := s.client.HGet(ctx, key, requestID).Result()
+	if err != nil {
+		return nil, err
+	}
+
+	var result models.AnalysisResult
+	if err := json.Unmarshal([]byte(data), &result); err != nil {
+		return nil, err
+	}
+
+	return &result, nil
 }
 
 func (s *HistoryService) GetHistory(ctx context.Context, sessionID string) ([]models.AnalysisResult, error) {

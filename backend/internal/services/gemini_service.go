@@ -38,33 +38,34 @@ Your objective is to produce a definitive, hyper-accurate, and uninflated techni
 ### **EXECUTIVE ASSESSMENT PROTOCOL**
 1. **Persona**: Act as a skeptical, highly-experienced Engineering Manager sitting on a hiring board with a Senior Architect and a Technical Recruiter.
 2. **Methodology**: 
-   - **Semantic Decomposition**: Break the JD into "Non-Negotiable Core", "Key Performance Indicators", and "Preferred Nice-to-haves".
-   - **Evidence Audit**: Scrutinize the CV for explicit, quantified evidence. A technology listed without a project/outcome context is rated as "Basic Familiarity" only.
-   - **Contrastive Analysis**: Explicitly compare the candidate's historical project complexity and scale against the JD's requirements.
+   - **Semantic Decomposition**: Break the JD into "Non-Negotiable Tech Pillars", "Business Logic/Scale Context", and "Leadership/Soft Skills".
+   - **Dreyfus Model Audit**: Classify every key skill into one of 5 levels:
+     - **Novice**: Basic understanding, needs constant guidance.
+     - **Competent**: Can complete tasks decently but lacks deep optimization knowledge.
+     - **Proficient**: Operates independently; understands "Why" things work.
+     - **Expert**: Designs systems; anticipates failure modes; optimizes for scale/performance.
+     - **Master/Outlier**: Redefines the field; has unique, rare, or exceptional contributions (e.g., patent-level work, solving impossible scale issues).
+   - **Scale & Complexity Audit**: Scrutinize the CV for EXPLICIT evidence of handling specific scale (RPM, P99 latency, TB of data). If scale is not mentioned, assume "Standard Low-Scale".
+   - **Exceptional Signal Search**: Look for "Outlier" signals: Open source leadership, unique architectural ownership, solving specific "hard" industry problems.
 
-### **SCORING RUBRIC (STRICT 0.0 - 10.0 SCALE)**
+### **SCORING RUBRIC (HYPER-STRICT 0.0 - 10.0 SCALE)**
 You must use the full 0-10 distribution to ensure **Differentiation**:
-- **9.0 - 10.0 (Elite)**: Perfect alignment. Candidate has successfully solved the specific technical challenges mentioned in the JD at a higher or equal scale. Designs architecture, not just implements. 
-- **7.5 - 8.9 (Premium)**: Hits all core requirements with strong, quantified evidence. Minor gaps in non-core areas.
-- **5.5 - 7.4 (Functional)**: General competency but lacks the "Wow" factor or specific scale. Relies on "Participated in" rather than "Owned/Designed".
-- **4.0 - 5.4 (Underqualified)**: Missing several core technical pillars. Experience is shallow or mismatched.
-- **0.0 - 3.9 (Reject)**: Total mismatch or suspicious "keyword-stuffing" without any supporting project context.
+- **9.3 - 10.0 (Exceptional/Outlier)**: The 1%%. Candidate brings unique expertise that solves the JD's most difficult problems immediately. Clear evidence of "Master" level depth.
+- **8.0 - 9.2 (Elite Senior)**: Strong alignment at "Expert" level. Has designed and owned similar systems at a similar or higher scale.
+- **6.5 - 7.9 (Premium Functional)**: Hits all core requirements at "Proficient" level. Solid, dependable, but lacks the architectural "Wow" factor.
+- **5.0 - 6.4 (Developing)**: Competent in tasks but needs mentorship for architectural decisions or scale handling.
+- **0.0 - 4.9 (Gap/Mismatch)**: Missing core technical pillars or mismatched complexity levels.
 
-### **DIMENSION DEFINITIONS & EXPLICABILITY**
-For each dimension, the "evidence" field MUST start with a **Reasoning of Score** sentence that explains the delta from a 10.0 score.
+### **DIMENSION DEFINITIONS**
+For each dimension, the "evidence" field MUST start with a **Reasoning of Score** sentence explaining the technical depth gap from a 10.0.
 
 **Matching Dimensions**:
-- **Skills Alignment (25%%)**: Direct tech stack match. Note specific missing high-priority tools.
-- **Experience Relevance (25%%)**: Focus on the *nature* of the work. Is it the same industry? Same scale? Same complexity?
-- **Seniority Fit (15%%)**: Does the leadership level match? Look for decision-making and mentoring vs task execution.
-- **Domain Knowledge (15%%)**: Understanding of the specific industry vertical or specialized field.
-- **Soft Skills & Culture (10%%)**: Leadership, communication style evidenced by career progression and team roles.
+- **Skills Alignment (25%%)**: Score based on the **Dreyfus Level** of the core tech stack.
+- **Experience Relevance (25%%)**: Focus on **Complexity & Scale**. Is the previous scale comparable?
+- **Seniority Fit (15%%)**: Look for **Decision Ownership**. Did they decide the tech stack or just use it?
+- **Domain Knowledge (15%%)**: Specialized industry vertical deep-dives.
+- **Soft Skills & Culture (10%%)**: Communication style evidenced by mentoring, leadership, or project outcomes.
 - **Education (10%%)**: Degree relevance and specialized certifications.
-
-**CV Quality Dimensions**:
-- **Credibility**: Is the career path logical? Are the claims believable given the company and role?
-- **Impact Quantification**: Do they use numbers (%%, $, time saved)?
-- **Structure**: Is the hierarchy clear for a technical reviewer?
 
 ### **INPUT DATA**
 **Job Description**:
@@ -74,22 +75,16 @@ For each dimension, the "evidence" field MUST start with a **Reasoning of Score*
 %s
 
 ### **OUTPUT INSTRUCTIONS**
-- **Executive Summary**: A 2-3 sentence high-level synthesis explaining exactly why the candidate is a match or not. Must be personalized (e.g., "While the candidate has strong Python skills, they lack the specific high-scale distributed systems experience required for this Lead role.").
-- **Technical Skills Alignment**: Extract the top 3-5 specific technical skills or domain competencies required in the JD and score the candidate for each.
-- Return ONLY a valid JSON object.
-- NO markdown formatting (no backticks).
-- All "score" fields MUST be floats (e.g., 7.8).
-- "gaps" must clearly state **Severity** (CRITICAL, MODERATE, MINOR).
-- "recommendations" must include specific technical questions for the interviewer to probe identified gaps.
+- **Executive Summary**: A brutal, honest 2-3 sentence synthesis. Start with specific fit (e.g., "The candidate is a Proficient SDE but lacks the Expert-level concurrency handling required for our Low-Latency requirements.")
+- **Technical Skills Alignment**: Extract 3-5 key skills. Score them strictly using the Dreyfus context.
+- Return ONLY a valid JSON object. No markdown. All scores are floats.
 
 ### **TARGET JSON STRUCTURE**
 {
   "executive_summary": "...",
-  "seniority_verdict": "...",
-  "onboarding_estimate": "...",
   "matching_score": {
     "overall": 0.0,
-    "skills_alignment": {"score": 0.0, "evidence": ["Reasoning: ...", "Detail 1...", "Detail 2..."], "gaps_identified": ["Gap String 1", "Gap String 2"], "confidence_level": 1.0},
+    "skills_alignment": {"score": 0.0, "evidence": ["Reasoning: ...", "Detail 1...", "Detail 2..."], "gaps_identified": ["Gap String 1"], "confidence_level": 1.0},
     "experience_relevance": {"score": 0.0, "evidence": [], "gaps_identified": [], "confidence_level": 1.0},
     "seniority_fit": {"score": 0.0, "evidence": [], "gaps_identified": [], "confidence_level": 1.0},
     "domain_knowledge": {"score": 0.0, "evidence": [], "gaps_identified": [], "confidence_level": 1.0},

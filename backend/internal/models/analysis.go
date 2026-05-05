@@ -67,6 +67,7 @@ type ProcessingMetadata struct {
 	Timestamp        string  `json:"timestamp"`
 	RequestID        string  `json:"request_id"`
 	CVFileName       string  `json:"cv_file_name"`
+	FileHash         string  `json:"file_hash"`
 }
 
 type SkillScore struct {
@@ -76,6 +77,7 @@ type SkillScore struct {
 
 type AnalysisResult struct {
 	ExecutiveSummary   string             `json:"executive_summary"`
+	FileHash           string             `json:"file_hash"`
 	MatchingScore      MatchingScore      `json:"matching_score"`
 	QualityScore       QualityScore       `json:"quality_score"`
 	TechnicalSkills    []SkillScore       `json:"technical_skills"`
