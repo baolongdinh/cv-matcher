@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+	"strconv"
 
 	"cv-jd-matcher/internal/services"
 
@@ -12,82 +13,41 @@ type HistoryHandler struct {
 	historyService *services.HistoryService
 }
 
-func NewHistoryHandler(historyService *services.HistoryService) *HistoryHandler {
-	return &HistoryHandler{
-		historyService: historyService,
-	}
+func NewHistoryHandler(hs *services.HistoryService) *HistoryHandler {
+	return &HistoryHandler{historyService: hs}
 }
 
 func (h *HistoryHandler) GetHistory(c *gin.Context) {
-	sessionID := c.GetHeader("X-Session-ID")
-	if sessionID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"status": "error",
-			"error": gin.H{
-				"code":    "MISSING_SESSION_ID",
-				"message": "X-Session-ID header is required",
-			},
-		})
+	sessionID, ok := requireSessionID(c)
+	if !ok {
 		return
 	}
 
-	history, err := h.historyService.GetHistory(c.Request.Context(), sessionID)
+	jobID := c.Query("job_id")
+	limitStr := c.DefaultQuery("limit", "50")
+	limit, _ := strconv.ParseInt(limitStr, 10, 64)
+
+	results, err := h.historyService.GetRankedHistoryWithSession(c.Request.Context(), jobID, limit, sessionID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"status": "error",
-			"error": gin.H{
-				"code":    "REDIS_ERROR",
-				"message": "Failed to fetch history",
-			},
-		})
+		writeError(c, http.StatusInternalServerError, "HISTORY_FETCH_ERROR", "Failed to fetch history", err.Error())
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"status": "success",
-		"data":   history,
-	})
+	writeSuccess(c, http.StatusOK, results)
 }
 
 func (h *HistoryHandler) DeleteHistory(c *gin.Context) {
-	sessionID := c.GetHeader("X-Session-ID")
-	if sessionID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"status": "error",
-			"error": gin.H{
-				"code":    "MISSING_SESSION_ID",
-				"message": "X-Session-ID header is required",
-			},
-		})
+	sessionID, ok := requireSessionID(c)
+	if !ok {
 		return
 	}
 
-	requestID := c.Param("id")
-	if requestID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"status": "error",
-			"error": gin.H{
-				"code":    "MISSING_REQUEST_ID",
-				"message": "request ID param is required",
-			},
-		})
+	id := c.Param("id")
+
+	if err := h.historyService.DeleteResultWithSession(c.Request.Context(), id, sessionID); err != nil {
+		writeError(c, http.StatusInternalServerError, "HISTORY_DELETE_ERROR", "Failed to delete record", err.Error())
 		return
 	}
 
-	err := h.historyService.DeleteAnalysis(c.Request.Context(), sessionID, requestID)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"status": "error",
-			"error": gin.H{
-				"code":    "REDIS_ERROR",
-				"message": "Failed to delete history item",
-			},
-		})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"status":  "success",
-		"message": "Item deleted",
-	})
+	writeSuccess(c, http.StatusOK, gin.H{"message": "Record deleted"})
 }

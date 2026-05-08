@@ -2,7 +2,9 @@ package services
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"fmt"
+	"encoding/hex"
 
 	"github.com/ledongthuc/pdf"
 )
@@ -11,6 +13,11 @@ type PDFService struct{}
 
 func NewPDFService() *PDFService {
 	return &PDFService{}
+}
+
+func (s *PDFService) GenerateFileHash(pdfData []byte) string {
+	hash := sha256.Sum256(pdfData)
+	return hex.EncodeToString(hash[:])
 }
 
 func (s *PDFService) ExtractText(pdfData []byte) (string, int, error) {
@@ -39,6 +46,10 @@ func (s *PDFService) ExtractText(pdfData []byte) (string, int, error) {
 
 		extractedText.WriteString(text)
 		extractedText.WriteString("\n")
+	}
+
+	if extractedText.Len() == 0 {
+		return "", numPages, fmt.Errorf("no text could be extracted from the PDF (might be scanned/image-based)")
 	}
 
 	return extractedText.String(), numPages, nil

@@ -1,8 +1,8 @@
 package handlers
 
 import (
-	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"time"
 
@@ -10,11 +10,11 @@ import (
 	"cv-jd-matcher/internal/services"
 
 	"github.com/gin-gonic/gin"
+	"github.com/redis/go-redis/v9"
 )
 
 type AnalyzeHandler struct {
 	pdfService     *services.PDFService
-	geminiService  *services.GeminiService
 	historyService *services.HistoryService
 }
 
@@ -26,132 +26,91 @@ func NewAnalyzeHandler(pdfService *services.PDFService, historyService *services
 }
 
 func (h *AnalyzeHandler) Analyze(c *gin.Context) {
-	startTime := time.Now()
-
-	// 1. Parse multipart form
-	jobDescription := c.PostForm("job_description")
-	apiKey := c.PostForm("api_key")
-	file, err := c.FormFile("cv_file")
-	sessionID := c.GetHeader("X-Session-ID")
-	fileHash := c.GetHeader("X-File-Hash")
-
-	if jobDescription == "" || file == nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"status": "error",
-			"error": gin.H{
-				"code":    "VALIDATION_ERROR",
-				"message": "Job description and CV file are required",
-			},
-		})
+	sessionID, ok := requireSessionID(c)
+	if !ok {
 		return
 	}
 
-	// 1.5 Check cache if session and hash are provided
-	if sessionID != "" && fileHash != "" {
-		cachedResult, err := h.historyService.GetByHash(c.Request.Context(), sessionID, fileHash)
-		if err == nil && cachedResult != nil {
-			c.JSON(http.StatusOK, gin.H{
-				"status": "success",
-				"data":   cachedResult,
-			})
-			return
-		}
+	startTime := time.Now()
+	jobDescription := c.PostForm("job_description")
+	apiKey := c.PostForm("api_key")
+	jobID := c.PostForm("job_id")
+	file, err := c.FormFile("cv_file")
+
+	if jobDescription == "" || file == nil || apiKey == "" {
+		writeError(c, http.StatusBadRequest, "VALIDATION_ERROR", "Job description, API key and CV file are required", nil)
+		return
 	}
 
-	// 2. Read CV file
 	openedFile, err := file.Open()
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"status": "error",
-			"error": gin.H{
-				"code":    "FILE_READ_ERROR",
-				"message": "Failed to read uploaded file",
-			},
-		})
+		writeError(c, http.StatusInternalServerError, "FILE_READ_ERROR", "Failed to read uploaded file", err.Error())
 		return
 	}
 	defer openedFile.Close()
 
-	fileBytes := make([]byte, file.Size)
-	_, err = openedFile.Read(fileBytes)
+	fileBytes, err := io.ReadAll(openedFile)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"status": "error",
-			"error": gin.H{
-				"code":    "FILE_READ_ERROR",
-				"message": "Failed to read file content",
-			},
-		})
+		writeError(c, http.StatusInternalServerError, "FILE_READ_ERROR", "Failed to read file content", err.Error())
 		return
 	}
 
-	// 3. Extract text from PDF
+	fileHash := h.pdfService.GenerateFileHash(fileBytes)
+	ctx := c.Request.Context()
+
+	cachedResult, err := h.historyService.GetResultByFileHashForSession(ctx, fileHash, sessionID)
+	if err == nil && cachedResult != nil {
+		requestID := fmt.Sprintf("req_%d", time.Now().UnixNano())
+		cloned, cloneErr := h.historyService.CloneResultToSession(ctx, cachedResult, sessionID, requestID, jobID, file.Filename)
+		if cloneErr != nil {
+			writeError(c, http.StatusInternalServerError, "CACHE_CLONE_ERROR", "Failed to store cached result for this session", cloneErr.Error())
+			return
+		}
+		writeSuccess(c, http.StatusOK, cloned)
+		return
+	}
+	if err != nil && err != redis.Nil {
+		writeError(c, http.StatusInternalServerError, "CACHE_LOOKUP_ERROR", "Failed to check cached result", err.Error())
+		return
+	}
+
 	cvText, numPages, err := h.pdfService.ExtractText(fileBytes)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"status": "error",
-			"error": gin.H{
-				"code":    "PDF_PARSE_ERROR",
-				"message": "Failed to extract text from PDF",
-				"details": err.Error(),
-			},
-		})
+		writeError(c, http.StatusInternalServerError, "PDF_PARSE_ERROR", "Failed to extract text from PDF", err.Error())
 		return
 	}
 
-	// 4. Initialize Gemini service (per request or global)
 	geminiSvc, err := services.NewGeminiService(apiKey)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"status": "error",
-			"error": gin.H{
-				"code":    "INVALID_API_KEY",
-				"message": "Failed to initialize Gemini service",
-				"details": err.Error(),
-			},
-		})
+		writeError(c, http.StatusUnauthorized, "INVALID_API_KEY", "Failed to initialize Gemini service", err.Error())
 		return
 	}
-
-	// 5. Analyze with Gemini
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-	defer cancel()
 
 	result, err := geminiSvc.AnalyzeCVJD(ctx, jobDescription, cvText)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"status": "error",
-			"error": gin.H{
-				"code":    "ANALYSIS_ERROR",
-				"message": "Failed to analyze CV-JD",
-				"details": err.Error(),
-			},
-		})
+		writeError(c, http.StatusServiceUnavailable, "AI_SERVICE_ERROR", "Failed to analyze CV with AI", err.Error())
 		return
 	}
 
-	// 6. Add metadata
-	result.FileHash = fileHash
+	requestID := fmt.Sprintf("req_%d", time.Now().UnixNano())
 	result.ProcessingMetadata = models.ProcessingMetadata{
 		ProcessingTime:   time.Since(startTime).Seconds(),
 		CVPagesProcessed: numPages,
-		JDWordCount:      len(jobDescription), // Simple word count
-		ModelUsed:        "gemini-1.5-flash",
+		JDWordCount:      len(jobDescription),
+		ModelUsed:        "gemini-2.5-flash-lite",
 		Timestamp:        time.Now().Format(time.RFC3339),
-		RequestID:        fmt.Sprintf("req_%d", time.Now().UnixNano()),
+		RequestID:        requestID,
 		CVFileName:       file.Filename,
+		JobID:            jobID,
+		Status:           "completed",
 		FileHash:         fileHash,
 	}
+	result.FileHash = fileHash
 
-	// 7. Save to Redis History asynchronously if Session ID is present
-	if sessionID != "" {
-		go func(sid string, res *models.AnalysisResult) {
-			_ = h.historyService.SaveAnalysis(context.Background(), sid, res)
-		}(sessionID, result)
+	if err := h.historyService.SaveResultWithSession(ctx, result, sessionID); err != nil {
+		writeError(c, http.StatusInternalServerError, "HISTORY_SAVE_ERROR", "Failed to save analysis result", err.Error())
+		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"status": "success",
-		"data":   result,
-	})
+	writeSuccess(c, http.StatusOK, result)
 }

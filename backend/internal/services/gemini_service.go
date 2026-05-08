@@ -1,16 +1,17 @@
 package services
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
+	"net/http"
 	"strings"
 	"time"
 
 	"cv-jd-matcher/internal/models"
-
-	"google.golang.org/genai"
 )
 
 type GeminiService struct {
@@ -36,36 +37,18 @@ You are the **Lead Technical Talent Assessment Board** for a Tier-1 Global Engin
 Your objective is to produce a definitive, hyper-accurate, and uninflated technical match analysis between a Candidate CV and a Job Description (JD).
 
 ### **EXECUTIVE ASSESSMENT PROTOCOL**
-1. **Persona**: Act as a skeptical, highly-experienced Engineering Manager sitting on a hiring board with a Senior Architect and a Technical Recruiter.
+1. **Persona**: Act as a skeptical, highly-experienced Engineering Manager sitting on a hiring board.
 2. **Methodology**: 
-   - **Semantic Decomposition**: Break the JD into "Non-Negotiable Tech Pillars", "Business Logic/Scale Context", and "Leadership/Soft Skills".
-   - **Dreyfus Model Audit**: Classify every key skill into one of 5 levels:
-     - **Novice**: Basic understanding, needs constant guidance.
-     - **Competent**: Can complete tasks decently but lacks deep optimization knowledge.
-     - **Proficient**: Operates independently; understands "Why" things work.
-     - **Expert**: Designs systems; anticipates failure modes; optimizes for scale/performance.
-     - **Master/Outlier**: Redefines the field; has unique, rare, or exceptional contributions (e.g., patent-level work, solving impossible scale issues).
-   - **Scale & Complexity Audit**: Scrutinize the CV for EXPLICIT evidence of handling specific scale (RPM, P99 latency, TB of data). If scale is not mentioned, assume "Standard Low-Scale".
-   - **Exceptional Signal Search**: Look for "Outlier" signals: Open source leadership, unique architectural ownership, solving specific "hard" industry problems.
+   - **Semantic Decomposition**: Break the JD into "Non-Negotiable Tech Pillars".
+   - **Dreyfus Model Audit**: Classify every key skill into one of 5 levels: Novice, Competent, Proficient, Expert, Master.
+   - **Scale & Complexity Audit**: Scrutinize the CV for EXPLICIT evidence of handling specific scale.
 
 ### **SCORING RUBRIC (HYPER-STRICT 0.0 - 10.0 SCALE)**
-You must use the full 0-10 distribution to ensure **Differentiation**:
-- **9.3 - 10.0 (Exceptional/Outlier)**: The 1%%. Candidate brings unique expertise that solves the JD's most difficult problems immediately. Clear evidence of "Master" level depth.
-- **8.0 - 9.2 (Elite Senior)**: Strong alignment at "Expert" level. Has designed and owned similar systems at a similar or higher scale.
-- **6.5 - 7.9 (Premium Functional)**: Hits all core requirements at "Proficient" level. Solid, dependable, but lacks the architectural "Wow" factor.
-- **5.0 - 6.4 (Developing)**: Competent in tasks but needs mentorship for architectural decisions or scale handling.
-- **0.0 - 4.9 (Gap/Mismatch)**: Missing core technical pillars or mismatched complexity levels.
-
-### **DIMENSION DEFINITIONS**
-For each dimension, the "evidence" field MUST start with a **Reasoning of Score** sentence explaining the technical depth gap from a 10.0.
-
-**Matching Dimensions**:
-- **Skills Alignment (25%%)**: Score based on the **Dreyfus Level** of the core tech stack.
-- **Experience Relevance (25%%)**: Focus on **Complexity & Scale**. Is the previous scale comparable?
-- **Seniority Fit (15%%)**: Look for **Decision Ownership**. Did they decide the tech stack or just use it?
-- **Domain Knowledge (15%%)**: Specialized industry vertical deep-dives.
-- **Soft Skills & Culture (10%%)**: Communication style evidenced by mentoring, leadership, or project outcomes.
-- **Education (10%%)**: Degree relevance and specialized certifications.
+- **9.3 - 10.0 (Exceptional)**: The 1%%. Master level.
+- **8.0 - 9.2 (Elite Senior)**: Expert level.
+- **6.5 - 7.9 (Premium Functional)**: Proficient level.
+- **5.0 - 6.4 (Developing)**: Competent level.
+- **0.0 - 4.9 (Gap/Mismatch)**: Missing core technical pillars.
 
 ### **INPUT DATA**
 **Job Description**:
@@ -75,16 +58,15 @@ For each dimension, the "evidence" field MUST start with a **Reasoning of Score*
 %s
 
 ### **OUTPUT INSTRUCTIONS**
-- **Executive Summary**: A brutal, honest 2-3 sentence synthesis. Start with specific fit (e.g., "The candidate is a Proficient SDE but lacks the Expert-level concurrency handling required for our Low-Latency requirements.")
-- **Technical Skills Alignment**: Extract 3-5 key skills. Score them strictly using the Dreyfus context.
 - Return ONLY a valid JSON object. No markdown. All scores are floats.
+- Ensure the JSON matches the target structure exactly.
 
 ### **TARGET JSON STRUCTURE**
 {
   "executive_summary": "...",
   "matching_score": {
     "overall": 0.0,
-    "skills_alignment": {"score": 0.0, "evidence": ["Reasoning: ...", "Detail 1...", "Detail 2..."], "gaps_identified": ["Gap String 1"], "confidence_level": 1.0},
+    "skills_alignment": {"score": 0.0, "evidence": [], "gaps_identified": [], "confidence_level": 1.0},
     "experience_relevance": {"score": 0.0, "evidence": [], "gaps_identified": [], "confidence_level": 1.0},
     "seniority_fit": {"score": 0.0, "evidence": [], "gaps_identified": [], "confidence_level": 1.0},
     "domain_knowledge": {"score": 0.0, "evidence": [], "gaps_identified": [], "confidence_level": 1.0},
@@ -109,48 +91,81 @@ For each dimension, the "evidence" field MUST start with a **Reasoning of Score*
 }
 `, jdText, cvText)
 
-	client, err := genai.NewClient(ctx, &genai.ClientConfig{
-		APIKey:  s.apiKey,
-		Backend: genai.BackendGeminiAPI,
-	})
+	// API Endpoint for Gemini 2.5 Flash Lite
+	url := "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent"
+
+	// Create request body
+	requestBody := map[string]interface{}{
+		"contents": []map[string]interface{}{
+			{
+				"parts": []map[string]interface{}{
+					{"text": prompt},
+				},
+			},
+		},
+		"generationConfig": map[string]interface{}{
+			"responseMimeType": "application/json",
+			"temperature":      0.3,
+			"maxOutputTokens":  8192,
+		},
+	}
+
+	jsonData, err := json.Marshal(requestBody)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create genai client: %w", err)
+		return nil, fmt.Errorf("failed to marshal request body: %w", err)
 	}
 
-	model := "gemini-2.5-flash-lite"
-
-	temperature := float32(0.3) // Lower temperature for more stable, objective analysis
-
-	config := &genai.GenerateContentConfig{
-		ResponseMIMEType: "application/json",
-		Temperature:      &temperature,
-		MaxOutputTokens:  int32(8192),
-	}
-
-	parts := []*genai.Part{
-		{Text: prompt},
-	}
-
-	// Add timeout context
-	ctxWithTimeout, cancel := context.WithTimeout(ctx, 120*time.Second)
-	defer cancel()
-
-	result, err := client.Models.GenerateContent(ctxWithTimeout, model, []*genai.Content{{Parts: parts}}, config)
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonData))
 	if err != nil {
-		return nil, fmt.Errorf("gemini api error: %w", err)
+		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	if len(result.Candidates) == 0 || result.Candidates[0].Content == nil || len(result.Candidates[0].Content.Parts) == 0 {
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("x-goog-api-key", s.apiKey)
+
+	client := &http.Client{Timeout: 120 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("api request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("gemini api returned error (status %d): %s", resp.StatusCode, string(body))
+	}
+
+	var geminiResponse struct {
+		Candidates []struct {
+			Content struct {
+				Parts []struct {
+					Text string `json:"text"`
+				} `json:"parts"`
+			} `json:"content"`
+		} `json:"candidates"`
+	}
+
+	if err := json.Unmarshal(body, &geminiResponse); err != nil {
+		return nil, fmt.Errorf("failed to parse gemini response: %w", err)
+	}
+
+	if len(geminiResponse.Candidates) == 0 || len(geminiResponse.Candidates[0].Content.Parts) == 0 {
 		return nil, fmt.Errorf("empty response from gemini")
 	}
 
-	jsonText := result.Candidates[0].Content.Parts[0].Text
+	jsonText := geminiResponse.Candidates[0].Content.Parts[0].Text
 
-	// Clean up potential markdown blocks if JSON mode fails to strip them
-	jsonText = strings.TrimPrefix(jsonText, "```json")
-	jsonText = strings.TrimPrefix(jsonText, "```")
-	jsonText = strings.TrimSuffix(jsonText, "```")
-	jsonText = strings.TrimSpace(jsonText)
+	// Pre-processing to ensure valid JSON
+	// Sometimes AI returns text before or after the JSON block even with responseMimeType
+	start := strings.Index(jsonText, "{")
+	end := strings.LastIndex(jsonText, "}")
+	if start != -1 && end != -1 && end > start {
+		jsonText = jsonText[start : end+1]
+	}
 
 	var analysisResult models.AnalysisResult
 	if err := json.Unmarshal([]byte(jsonText), &analysisResult); err != nil {

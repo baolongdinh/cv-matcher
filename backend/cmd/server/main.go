@@ -5,21 +5,28 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"strings"
 
 	"cv-jd-matcher/internal/handlers"
 	"cv-jd-matcher/internal/services"
+	"cv-jd-matcher/internal/utils"
+	"cv-jd-matcher/internal/workers"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
-	"github.com/redis/go-redis/v9"
 )
 
 func main() {
 	// Load environment variables
 	if err := godotenv.Load(); err != nil {
 		log.Println("No .env file found, using defaults")
+	}
+
+	// 1. Initialize Redis
+	if err := utils.InitRedis(); err != nil {
+		log.Printf("Warning: Failed to connect to Redis: %v", err)
+	} else {
+		log.Printf("Connected to Redis successfully")
 	}
 
 	// Set Gin mode
@@ -29,38 +36,24 @@ func main() {
 
 	r := gin.Default()
 
-	// Initialize Redis
-	redisURL := os.Getenv("REDIS_URL")
-	if redisURL == "" {
-		redisURL = "localhost:6379"
-	}
-	rdb := redis.NewClient(&redis.Options{
-		Addr: redisURL,
-	})
-
-	// Test Redis connection
-	if err := rdb.Ping(context.Background()).Err(); err != nil {
-		log.Printf("Warning: Failed to connect to Redis at %s: %v", redisURL, err)
-	} else {
-		log.Printf("Connected to Redis at %s", redisURL)
-	}
-
-	// Initialize services
+	// 2. Initialize Services
 	pdfService := services.NewPDFService()
-	historyService := services.NewHistoryService(rdb)
+	historyService := services.NewHistoryService()
+
+	// 3. Initialize Handlers
 	analyzeHandler := handlers.NewAnalyzeHandler(pdfService, historyService)
+	bulkHandler := handlers.NewBulkHandler(pdfService, historyService)
 	historyHandler := handlers.NewHistoryHandler(historyService)
+
+	// 4. Start Background Worker
+	worker := workers.NewAnalysisWorker(historyService, pdfService)
+	go worker.Start(context.Background())
 
 	// CORS middleware
 	config := cors.DefaultConfig()
-	corsOrigins := os.Getenv("CORS_ORIGINS")
-	if corsOrigins == "" {
-		config.AllowAllOrigins = true
-	} else {
-		config.AllowOrigins = strings.Split(corsOrigins, ",")
-	}
 	config.AllowMethods = []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"}
-	config.AllowHeaders = []string{"Origin", "Content-Type", "Accept", "Authorization", "X-Session-ID", "X-File-Hash"}
+	config.AllowHeaders = []string{"Origin", "Content-Type", "Accept", "Authorization", "X-Session-ID", "X-File-Hash", "x-goog-api-key"}
+	config.AllowAllOrigins = true
 	r.Use(cors.New(config))
 
 	// API routes group
@@ -73,17 +66,19 @@ func main() {
 			})
 		})
 
+		// Single analysis
 		api.POST("/analyze", analyzeHandler.Analyze)
+
+		// Bulk analysis (Queue)
+		api.POST("/analyze/bulk", bulkHandler.AnalyzeBulk)
+		api.GET("/jobs/:batch_id", bulkHandler.GetBatchStatus)
+		api.GET("/jobs/:batch_id/results", bulkHandler.GetBatchResults)
+		api.GET("/jobs/:batch_id/notification", bulkHandler.GetBatchNotification)
+
+		// History & Ranking
 		api.GET("/history", historyHandler.GetHistory)
 		api.DELETE("/history/:id", historyHandler.DeleteHistory)
 	}
-
-	// Serve Static Frontend (Placeholder)
-	// After building the frontend, the files will be in web/dist
-	// r.StaticFS("/", http.Dir("./web/dist"))
-	// r.NoRoute(func(c *gin.Context) {
-	// 	c.File("./web/dist/index.html")
-	// })
 
 	port := os.Getenv("PORT")
 	if port == "" {
