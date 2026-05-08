@@ -11,18 +11,36 @@
           </div>
         </div>
         <div class="p-6 space-y-5">
-          <div>
-            <div class="flex items-center justify-between mb-2">
-              <label class="text-[13px] font-bold text-navy-700 uppercase tracking-tight">Gemini API Key</label>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <div class="flex items-center justify-between mb-2">
+                <label class="text-[13px] font-bold text-navy-700 uppercase tracking-tight">Gemini API Key</label>
+                <span class="text-[10px] font-medium text-navy-400 uppercase tracking-widest">Encrypted</span>
+              </div>
+              <div class="relative group">
+                <input 
+                  v-model="apiKey"
+                  type="password" 
+                  placeholder="••••••••••••••••••••••••••••••••••••"
+                  class="block w-full px-4 py-3 bg-navy-50 border-none rounded-xl focus:ring-2 focus:ring-primary-500/20 text-navy-900 text-sm transition-all group-hover:bg-navy-100"
+                />
+                <KeyIcon class="w-4 h-4 absolute right-4 top-1/2 -translate-y-1/2 text-navy-300 group-hover:text-navy-400 transition-colors" />
+              </div>
             </div>
-            <div class="relative group">
-              <input 
-                v-model="apiKey"
-                type="password" 
-                placeholder="••••••••••••••••••••••••••••••••••••"
-                class="block w-full px-4 py-3 bg-navy-50 border-none rounded-xl focus:ring-2 focus:ring-primary-500/20 text-navy-900 text-sm transition-all group-hover:bg-navy-100"
-              />
-              <KeyIcon class="w-4 h-4 absolute right-4 top-1/2 -translate-y-1/2 text-navy-300 group-hover:text-navy-400 transition-colors" />
+            <div>
+              <div class="flex items-center justify-between mb-2">
+                <label class="text-[13px] font-bold text-navy-700 uppercase tracking-tight">Job Title / ID</label>
+                <span class="text-[10px] font-medium text-navy-400 uppercase tracking-widest">For grouping</span>
+              </div>
+              <div class="relative group">
+                <input 
+                  v-model="jobId"
+                  type="text" 
+                  placeholder="e.g. Senior Frontend Dev"
+                  class="block w-full px-4 py-3 bg-navy-50 border-none rounded-xl focus:ring-2 focus:ring-primary-500/20 text-navy-900 text-sm transition-all group-hover:bg-navy-100 font-bold"
+                />
+                <BriefcaseIcon class="w-4 h-4 absolute right-4 top-1/2 -translate-y-1/2 text-navy-300 group-hover:text-navy-400 transition-colors" />
+              </div>
             </div>
           </div>
           
@@ -59,6 +77,7 @@
           ref="fileInput" 
           class="hidden" 
           accept=".pdf"
+          multiple
           @change="handleFileChange"
         />
         
@@ -68,7 +87,7 @@
         
         <h3 class="text-lg font-bold text-navy-900 mb-2">Upload Candidate CVs</h3>
         <p class="text-sm text-navy-500 max-w-[280px] leading-relaxed mb-8">
-          Drag and drop candidate resumes in PDF format. Our engine supports high-density technical CV analysis.
+          Drag and drop multiple candidate resumes in PDF format.
         </p>
         
         <button 
@@ -78,11 +97,11 @@
           Select Files
         </button>
         
-        <p class="mt-6 text-[10px] font-bold text-navy-300 uppercase tracking-[0.2em]">Supported formats: .pdf (Max 15MB)</p>
-        
-        <div v-if="cvFile" class="mt-8 flex items-center space-x-3 bg-emerald-50 px-4 py-2.5 rounded-full border border-emerald-100">
-          <CheckCircle2Icon class="w-4 h-4 text-emerald-500" />
-          <span class="text-xs font-bold text-emerald-700 truncate max-w-[200px]">{{ cvFile.name }}</span>
+        <div v-if="cvFiles.length > 0" class="mt-8 flex flex-wrap justify-center gap-2">
+          <div v-for="file in cvFiles" :key="file.name" class="flex items-center space-x-2 bg-emerald-50 px-3 py-1.5 rounded-full border border-emerald-100">
+            <CheckCircle2Icon class="w-3 h-3 text-emerald-500" />
+            <span class="text-[10px] font-bold text-emerald-700 truncate max-w-[120px]">{{ file.name }}</span>
+          </div>
         </div>
       </div>
 
@@ -125,6 +144,7 @@ import { ref, computed } from 'vue'
 import { 
   Info as InfoIcon, 
   Key as KeyIcon,
+  Briefcase as BriefcaseIcon,
   FileUp as FileUpIcon,
   Zap as ZapIcon, 
   Rocket as RocketIcon,
@@ -139,36 +159,39 @@ const props = defineProps<{
 const emit = defineEmits(['start'])
 
 const apiKey = ref(localStorage.getItem('gemini_api_key') || '')
+const jobId = ref(localStorage.getItem('cv_matcher_job_id') || '')
 const jd = ref(localStorage.getItem('cv_matcher_jd') || '')
-const cvFile = ref<File | null>(null)
-const isDragging = ref(false)
 const fileInput = ref<HTMLInputElement | null>(null)
+const cvFiles = ref<File[]>([])
+const isDragging = ref(false)
 
 const canSubmit = computed(() => {
-  return apiKey.value.length > 20 && jd.value.length > 50 && cvFile.value !== null
+  return apiKey.value.length > 20 && jd.value.length > 50 && cvFiles.value.length > 0
 })
 
 const handleFileChange = (e: Event) => {
   const target = e.target as HTMLInputElement
-  if (target.files && target.files[0]) {
-    cvFile.value = target.files[0]
+  if (target.files) {
+    cvFiles.value = Array.from(target.files)
   }
 }
 
 const handleDrop = (e: DragEvent) => {
   isDragging.value = false
-  if (e.dataTransfer?.files && e.dataTransfer.files[0]) {
-    cvFile.value = e.dataTransfer.files[0]
+  if (e.dataTransfer?.files) {
+    cvFiles.value = Array.from(e.dataTransfer.files)
   }
 }
 
 const handleStart = () => {
   localStorage.setItem('gemini_api_key', apiKey.value)
+  localStorage.setItem('cv_matcher_job_id', jobId.value)
   localStorage.setItem('cv_matcher_jd', jd.value)
   emit('start', {
     apiKey: apiKey.value,
+    jobId: jobId.value,
     jd: jd.value,
-    cvFile: cvFile.value
+    cvFiles: cvFiles.value
   })
 }
 </script>

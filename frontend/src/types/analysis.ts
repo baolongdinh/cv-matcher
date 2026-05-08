@@ -60,6 +60,9 @@ export interface ProcessingMetadata {
   timestamp: string
   request_id: string
   cv_file_name?: string
+  job_id?: string
+  status?: string
+  file_hash?: string
 }
 
 export interface SkillScore {
@@ -80,12 +83,105 @@ export interface AnalysisResult {
   processing_metadata: ProcessingMetadata
 }
 
-export interface AnalysisResponse {
-  status: 'success' | 'error'
-  data?: AnalysisResult
-  error?: {
-    code: string
-    message: string
-    details?: any
-  }
+export interface APIError {
+  code: string
+  message: string
+  details?: unknown
+}
+
+export interface SuccessResponse<T> {
+  status: 'success'
+  data: T
+}
+
+export interface ErrorResponse {
+  status: 'error'
+  error: APIError
+}
+
+export type APIResponse<T> = SuccessResponse<T> | ErrorResponse
+
+export interface BatchAnalyzeData {
+  batch_id: string
+  job_id?: string
+  total_files: number
+  message: string
+  session_scoped: boolean
+}
+
+export interface BatchItemStatus {
+  request_id: string
+  cv_file_name: string
+  status: 'queued' | 'processing' | 'completed' | 'failed'
+  cached: boolean
+  error_code?: string
+  error_message?: string
+}
+
+export interface BatchStatusData {
+  batch_id: string
+  status: string
+  job_id?: string
+  total: number
+  completed: number
+  successful: number
+  failed: number
+  items: BatchItemStatus[]
+}
+
+export interface BatchNotificationData {
+  batch_id: string
+  status: string
+  complete: boolean
+  total: number
+  completed: number
+  successful: number
+  failed: number
+  message: string
+  type: 'success' | 'warning' | 'info'
+}
+
+export interface BatchFailure {
+  request_id: string
+  cv_file_name: string
+  error_code: string
+  error_message: string
+  details?: string
+}
+
+export interface BatchResultsData {
+  batch_id: string
+  candidates: AnalysisResult[]
+  failed: BatchFailure[]
+  total: number
+  successful: number
+  failed_count: number
+}
+
+export interface LiveCandidateCard extends AnalysisResult {
+  is_cached: boolean
+}
+
+export interface QueueItemViewModel extends BatchItemStatus {
+  updated_label: string
+}
+
+export interface BatchFailureViewModel extends BatchFailure {
+  updated_label: string
+}
+
+export interface LiveBatchViewModel {
+  batch_id: string
+  status: string
+  job_id?: string
+  total: number
+  completed: number
+  successful: number
+  failed: number
+  completed_candidates: LiveCandidateCard[]
+  processing_items: QueueItemViewModel[]
+  failed_items: BatchFailureViewModel[]
+  last_seen_completed_count: number
+  is_restored_from_storage: boolean
+  is_reconnecting: boolean
 }

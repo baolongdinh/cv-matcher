@@ -217,7 +217,8 @@ const getRiskLevel = (flagsCount: number) => {
 }
 
 const getExecutiveSummary = () => {
-  return props.result.executive_summary || 'Analysis summary is being generated...'
+  if (!props.result.executive_summary) return 'No summary available.'
+  return props.result.executive_summary
 }
 </script>
 
